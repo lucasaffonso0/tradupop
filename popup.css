@@ -432,10 +432,272 @@ body {
   background: var(--danger-soft);
 }
 
+/* ── Word search ── */
+.word-search {
+  width: 100%;
+  padding: 7px 10px;
+  margin-bottom: 8px;
+  background: var(--card);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-family: var(--font);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 120ms;
+}
+
+.word-search:focus { border-color: var(--accent); }
+
+/* ── Botão secundário (exportar) ── */
+.btn-secondary {
+  padding: 4px 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: border-color 120ms;
+}
+
+.btn-secondary:hover { border-color: var(--accent); }
+
+/* ── Botão abre vocabulário ── */
+.btn-vocab-open {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font);
+  border-radius: var(--radius-sm);
+  transition: background 120ms;
+}
+
+.btn-vocab-open:hover { background: var(--accent-soft); }
+
+.btn-vocab-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.btn-vocab-right {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.due-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 3px 8px;
+  background: #FEF3C7;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #D97706;
+}
+
 /* ── Empty state ── */
 .empty-state {
   font-size: 12px;
   color: var(--text-muted);
   text-align: center;
   padding: 12px 0 4px;
+}
+
+/* ── Undo toast ── */
+.undo-toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  margin-top: 6px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text-mid);
+  animation: tp-fadein 150ms ease-out;
+}
+
+.undo-btn {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.undo-btn:hover { opacity: 0.75; }
+
+/* ── Import feedback ── */
+.import-feedback {
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 6px;
+  min-height: 14px;
+  transition: color 200ms;
+}
+
+.import-feedback.ok  { color: var(--success); }
+.import-feedback.err { color: var(--danger); }
+
+/* ── Word context ── */
+.word-context {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-style: italic;
+  max-width: 200px;
+}
+
+/* ── Flashcard ── */
+.flashcard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.flashcard-counter {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.flashcard-quit {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.flashcard-quit:hover { color: var(--danger); }
+
+.flashcard {
+  text-align: center;
+  padding: 24px 16px 16px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+}
+
+.flashcard-word {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.5px;
+  margin-bottom: 4px;
+}
+
+.flashcard-translation {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-top: 16px;
+  min-height: 30px;
+}
+
+.flashcard-context {
+  font-size: 11px;
+  font-style: italic;
+  color: var(--text-muted);
+  margin-top: 8px;
+  line-height: 1.5;
+}
+
+.flashcard-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 16px;
+}
+
+.btn-reveal {
+  padding: 7px 20px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: opacity 120ms;
+}
+
+.btn-reveal:hover { opacity: 0.85; }
+
+.btn-knew {
+  padding: 7px 14px;
+  background: var(--success-soft);
+  color: var(--success);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: border-color 120ms;
+  flex: 1;
+}
+
+.btn-knew:hover { border-color: var(--success); }
+
+.btn-unknown {
+  padding: 7px 14px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: border-color 120ms;
+  flex: 1;
+}
+
+.btn-unknown:hover { border-color: var(--danger); }
+
+.flashcard-complete {
+  text-align: center;
+  padding: 20px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--success);
+}
+
+@keyframes tp-fadein {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }

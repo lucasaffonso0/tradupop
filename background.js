@@ -1,7 +1,47 @@
 const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_MAX_ITEMS = 500;
-const CACHE_SCHEMA_VERSION = "v2";
+const CACHE_SCHEMA_VERSION = "v3";
 const translationCache = new Map();
+
+// ── Persistência do cache no service worker MV3 ──
+// O service worker é encerrado após ~30s de inatividade; o cache em memória
+// seria destruído. Usamos chrome.storage.session para sobreviver às suspensões.
+(async () => {
+  try {
+    const stored = await chrome.storage.session.get("translationCache");
+    const entries = stored?.translationCache;
+    if (Array.isArray(entries)) {
+      const now = Date.now();
+      for (const [k, v] of entries) {
+        if (v?.timestamp && now - v.timestamp <= CACHE_TTL_MS) {
+          translationCache.set(k, v);
+        }
+      }
+    }
+  } catch { /* storage.session indisponível em contextos de teste */ }
+})();
+
+function persistCache() {
+  try {
+    chrome.storage.session.set({ translationCache: [...translationCache.entries()] });
+  } catch { }
+}
+
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.create({
+    id: "tradupop-translate",
+    title: "Traduzir com TradupPop",
+    contexts: ["selection"],
+  });
+});
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId !== "tradupop-translate" || !tab?.id) return;
+  chrome.tabs.sendMessage(tab.id, {
+    type: "TRANSLATE_SELECTION",
+    text: info.selectionText,
+  });
+});
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type !== "TRANSLATE_TEXT") {
@@ -30,7 +70,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return true;
 });
 
+const LANG_CODE_RE = /^[a-zA-Z]{2,3}(-[a-zA-Z]{2,4})?$/;
+
 async function translate(text, sl = "en", tl = "pt") {
+  // Valida códigos de idioma antes de qualquer uso em URLs
+  if (!LANG_CODE_RE.test(sl) || !LANG_CODE_RE.test(tl)) {
+    throw new Error("Código de idioma inválido.");
+  }
+
   const cacheKey = normalizeCacheKey(text, sl, tl);
   const cached = getFromCache(cacheKey);
   if (cached) return cached;
@@ -39,6 +86,7 @@ async function translate(text, sl = "en", tl = "pt") {
   try {
     result = await translateWithGoogle(text, sl, tl);
   } catch (_error) {
+    console.warn("[TradupPop] Google Translate falhou, usando fallback:", _error?.message);
     result = await translateWithMyMemory(text, sl, tl);
   }
 
@@ -71,15 +119,23 @@ async function translateWithGoogle(text, sl = "en", tl = "pt") {
     throw new Error("Google Translate sem resultado.");
   }
 
-  const alternatives = isSingleEnglishWord(text)
+  // Cache do resultado de isSingleEnglishWord para evitar 3 chamadas redundantes
+  const isSingleWord = isSingleEnglishWord(text);
+
+  const alternatives = isSingleWord
     ? extractAlternativeTranslations(data, translated, text)
     : [];
-  const dictionary = isSingleEnglishWord(text)
+  const dictionary = isSingleWord
     ? extractDictionaryEntries(data, text)
     : [];
   const examples = extractExamples(data);
+  let phonetic = extractPhonetic(data);
 
-  return { translated, alternatives, dictionary, examples };
+  if (!phonetic && isSingleWord && sl === "en") {
+    phonetic = await fetchPhoneticFallback(text);
+  }
+
+  return { translated, alternatives, dictionary, examples, phonetic };
 }
 
 async function translateWithMyMemory(text, sl = "en", tl = "pt") {
@@ -116,12 +172,44 @@ async function translateWithMyMemory(text, sl = "en", tl = "pt") {
     translated,
     alternatives: isSingleEnglishWord(text) ? dedupe(alternatives) : [],
     dictionary: [],
-    examples: []
+    examples: [],
+    phonetic: ""
   };
 }
 
+async function fetchPhoneticFallback(word) {
+  try {
+    const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`);
+    if (!res.ok) return "";
+    const data = await res.json();
+    const phonetics = data?.[0]?.phonetics || [];
+    const found = phonetics.find(p => p.text && p.text.trim());
+    return found ? found.text.trim() : "";
+  } catch {
+    return "";
+  }
+}
+
+function extractPhonetic(data) {
+  // Posição primária: data[0][i][3] (romanização por segmento)
+  const segments = Array.isArray(data?.[0]) ? data[0] : [];
+  const fromSegments = segments
+    .map((segment) => (typeof segment?.[3] === "string" ? segment[3].trim() : ""))
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+  if (fromSegments) return fromSegments;
+
+  // Posição secundária conhecida: data[3] (pronúncia do idioma de origem)
+  if (typeof data?.[3] === "string" && data[3].trim()) {
+    return data[3].trim();
+  }
+
+  return "";
+}
+
 function isSingleEnglishWord(text) {
-  // Aceita palavra única em qualquer idioma (inclui acentos e scripts não-latinos)
   return /^\p{L}[\p{L}'-]*$/u.test((text || "").trim());
 }
 
@@ -130,7 +218,6 @@ function extractAlternativeTranslations(data, primaryTranslation, sourceText) {
   const primary = (primaryTranslation || "").toLowerCase();
   const source = (sourceText || "").trim().toLowerCase();
 
-  // Formato comum de dicionário em data[1].
   const dictEntries = Array.isArray(data?.[1]) ? data[1] : [];
   for (const entry of dictEntries) {
     const terms = Array.isArray(entry?.[1]) ? entry[1] : [];
@@ -149,9 +236,7 @@ function dedupe(list) {
 
   for (const item of list) {
     const key = item.toLowerCase();
-    if (seen.has(key)) {
-      continue;
-    }
+    if (seen.has(key)) continue;
     seen.add(key);
     unique.push(item);
   }
@@ -161,26 +246,13 @@ function dedupe(list) {
 
 function pushCandidate(target, value, primary, source) {
   const text = String(value || "").trim();
-  if (!text) {
-    return;
-  }
+  if (!text) return;
 
   const normalized = text.toLowerCase();
-  if (normalized === primary) {
-    return;
-  }
-  if (normalized === source) {
-    return;
-  }
+  if (normalized === primary || normalized === source) return;
 
-  // Aceita somente texto plausível de tradução (qualquer idioma).
-  if (!/^[\p{L}\s'-]+$/u.test(text)) {
-    return;
-  }
-
-  if (text.length < 2 || text.length > 40) {
-    return;
-  }
+  if (!/^[\p{L}\s'-]+$/u.test(text)) return;
+  if (text.length < 2 || text.length > 40) return;
 
   target.push(text);
 }
@@ -198,9 +270,7 @@ function extractDictionaryEntries(data, sourceText) {
 
     for (let i = 0; i < terms.length; i += 1) {
       const pt = String(terms[i] || "").trim();
-      if (!pt) {
-        continue;
-      }
+      if (!pt) continue;
 
       const englishTerms = extractSynonyms(reverse[i], source);
       for (const en of englishTerms) {
@@ -214,46 +284,40 @@ function extractDictionaryEntries(data, sourceText) {
 
     const items = [];
     for (const row of byEnglish.values()) {
-      items.push({
-        en: row.en,
-        pts: Array.from(row.pts).slice(0, 6)
-      });
-      if (items.length >= 4) {
-        break;
-      }
+      items.push({ en: row.en, pts: Array.from(row.pts).slice(0, 6) });
+      if (items.length >= 4) break;
     }
 
     if (items.length > 0) {
       groups.push({ pos: pos || "outros", items });
     }
 
-    if (groups.length >= 2) {
-      break;
-    }
+    if (groups.length >= 2) break;
   }
 
   return groups;
 }
 
 function extractExamples(data) {
-  // A API retorna exemplos (dt=ex) em índices variáveis dependendo da palavra.
-  // Percorre todos os índices da resposta procurando um array de frases.
   if (!Array.isArray(data)) return [];
 
   const examples = [];
 
-  for (let i = 0; i < data.length; i++) {
+  // Começa em i=1 para pular data[0] (segmentos de tradução)
+  // Exemplos estão tipicamente em data[5] no cliente GTX
+  for (let i = 1; i < data.length; i++) {
     const block = data[i];
-    // O bloco de exemplos é um array cujo primeiro elemento é um array de itens
     if (!Array.isArray(block) || !Array.isArray(block[0])) continue;
 
     for (const item of block[0]) {
       const sentence = String(item?.[0] || "").trim();
-      if (!sentence) continue;
-      // Só aceita frases que tenham a palavra destacada em <b> (característica dos exemplos)
-      if (!sentence.includes("<b>")) continue;
-      // Remove outras tags HTML mantendo apenas <b> para highlight
-      const clean = sentence.replace(/<(?!\/?(b)\b)[^>]+>/gi, "").trim();
+      if (!sentence || !sentence.includes("<b>")) continue;
+      // Remove todas as tags exceto <b>/<b>; strip atributos de <b> por segurança
+      const clean = sentence
+        .replace(/<b[^>]*>/gi, "<b>")
+        .replace(/<\/b>/gi, "</b>")
+        .replace(/<[^>]+>/g, "")
+        .trim();
       if (clean.length > 10 && clean.length < 250) {
         examples.push(clean);
       }
@@ -267,25 +331,16 @@ function extractExamples(data) {
 }
 
 function extractSynonyms(reverseEntry, source) {
-  // reverseEntry = [pt_word, [en_syn1, en_syn2, ...], score, ...]
-  // Os sinônimos em inglês ficam em reverseEntry[1], não no array raiz
   const raw = Array.isArray(reverseEntry?.[1]) ? reverseEntry[1] : [];
   const out = [];
 
   for (const item of raw) {
     const term = String(item || "").trim();
-    if (!term) {
-      continue;
-    }
-    const low = term.toLowerCase();
-    // Aceita qualquer script (latim, cirílico, CJK, etc.)
-    if (!/\p{L}/u.test(term)) {
-      continue;
-    }
+    if (!term) continue;
+    if (term.toLowerCase() === source) continue;
+    if (!/\p{L}/u.test(term)) continue;
     out.push(term);
-    if (out.length >= 6) {
-      break;
-    }
+    if (out.length >= 6) break;
   }
 
   return dedupe(out);
@@ -297,9 +352,7 @@ function normalizeCacheKey(text, sl = "en", tl = "pt") {
 
 function getFromCache(key) {
   const entry = translationCache.get(key);
-  if (!entry) {
-    return null;
-  }
+  if (!entry) return null;
 
   if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
     translationCache.delete(key);
@@ -310,19 +363,14 @@ function getFromCache(key) {
 }
 
 function setInCache(key, value) {
-  if (!key) {
-    return;
-  }
+  if (!key) return;
 
-  if (translationCache.size >= CACHE_MAX_ITEMS) {
+  // Evita ejetar entrada existente ao atualizar a mesma chave
+  if (!translationCache.has(key) && translationCache.size >= CACHE_MAX_ITEMS) {
     const oldestKey = translationCache.keys().next().value;
-    if (oldestKey) {
-      translationCache.delete(oldestKey);
-    }
+    if (oldestKey) translationCache.delete(oldestKey);
   }
 
-  translationCache.set(key, {
-    value,
-    timestamp: Date.now()
-  });
+  translationCache.set(key, { value, timestamp: Date.now() });
+  persistCache();
 }

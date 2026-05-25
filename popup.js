@@ -1,25 +1,37 @@
-const uiLangSelect  = document.getElementById("uiLangSelect");
+const uiLangSelect = document.getElementById("uiLangSelect");
 
 function applyUiStrings(lang) {
   const s = UI_STRINGS[lang] || UI_STRINGS["pt"];
   const map = {
-    "lbl-panelSubtitle": s.panelSubtitle,
-    "lbl-darkMode":      s.darkMode,
-    "lbl-shortcutTitle": s.shortcutTitle,
-    "lbl-langsTitle":    s.langsTitle,
-    "lbl-langFrom":      s.langFrom,
-    "lbl-langTo":        s.langTo,
+    "lbl-panelSubtitle":   s.panelSubtitle,
+    "lbl-darkMode":        s.darkMode,
+    "lbl-shortcutTitle":   s.shortcutTitle,
+    "lbl-langsTitle":      s.langsTitle,
+    "lbl-langFrom":        s.langFrom,
+    "lbl-langTo":          s.langTo,
     "lbl-savedWordsTitle": s.savedWordsTitle,
-    "lbl-uiLang":        s.uiLangTitle,
+    "lbl-uiLang":          s.uiLangTitle,
+    "lbl-openVocab":       s.openVocab       || "Abrir",
+    "lbl-dueForReview":    s.dueForReview     || "para revisar",
   };
   for (const [id, text] of Object.entries(map)) {
     const el = document.getElementById(id);
     if (el) el.textContent = text;
   }
-  // data-i18n elements
   document.querySelectorAll("[data-i18n]").forEach((el) => {
     const key = el.dataset.i18n;
     if (s[key]) el.textContent = s[key];
+  });
+  applyLangOptions(s.langOptions);
+}
+
+function applyLangOptions(opts) {
+  if (!opts) return;
+  [sourceLangEl, targetLangEl].forEach(select => {
+    if (!select) return;
+    for (const opt of select.options) {
+      if (opts[opt.value]) opt.textContent = opts[opt.value];
+    }
   });
 }
 
@@ -27,10 +39,10 @@ const darkToggle    = document.getElementById("darkModeToggle");
 const shortcutInput = document.getElementById("shortcutInput");
 const saveShortcut  = document.getElementById("saveShortcutBtn");
 const feedback      = document.getElementById("shortcutFeedback");
-const wordList      = document.getElementById("wordList");
-const emptyState    = document.getElementById("emptyState");
 const wordCount     = document.getElementById("wordCount");
-const clearAllBtn   = document.getElementById("clearAllBtn");
+const openVocabBtn  = document.getElementById("openVocabBtn");
+const duePill       = document.getElementById("duePill");
+const dueCount      = document.getElementById("dueCount");
 const sourceLangEl  = document.getElementById("sourceLang");
 const targetLangEl  = document.getElementById("targetLang");
 const swapLangBtn   = document.getElementById("swapLangBtn");
@@ -47,12 +59,30 @@ chrome.storage.local.get(["darkMode", "shortcutKey", "savedWords", "sourceLang",
   }
 
   shortcutInput.value = (result.shortcutKey || "q").toUpperCase();
-
   if (result.sourceLang) sourceLangEl.value = result.sourceLang;
   if (result.targetLang) targetLangEl.value = result.targetLang;
 
-  renderWordList(Array.isArray(result.savedWords) ? result.savedWords : []);
+  updateWordCount(Array.isArray(result.savedWords) ? result.savedWords : []);
 });
+
+// Atualiza contador quando palavras mudam
+chrome.storage.onChanged.addListener((changes) => {
+  if (changes.savedWords) {
+    updateWordCount(Array.isArray(changes.savedWords.newValue) ? changes.savedWords.newValue : []);
+  }
+});
+
+function updateWordCount(words) {
+  wordCount.textContent = words.length;
+  const now = Date.now();
+  const due = words.filter(w => !w.nextReview || w.nextReview <= now).length;
+  if (due > 0) {
+    dueCount.textContent = due;
+    duePill.style.display = "inline-flex";
+  } else {
+    duePill.style.display = "none";
+  }
+}
 
 uiLangSelect.addEventListener("change", () => {
   const lang = uiLangSelect.value;
@@ -73,10 +103,7 @@ swapLangBtn.addEventListener("click", () => {
   const tmp = sourceLangEl.value;
   sourceLangEl.value = targetLangEl.value;
   targetLangEl.value = tmp;
-  chrome.storage.local.set({
-    sourceLang: sourceLangEl.value,
-    targetLang: targetLangEl.value
-  });
+  chrome.storage.local.set({ sourceLang: sourceLangEl.value, targetLang: targetLangEl.value });
 });
 
 // ── Dark mode ──
@@ -88,9 +115,9 @@ darkToggle.addEventListener("change", () => {
 
 // ── Atalho ──
 shortcutInput.addEventListener("keydown", (e) => {
-  e.preventDefault();
   const key = e.key.replace(/^(Control|Alt|Shift|Meta)$/, "");
-  if (key && key.length === 1) {
+  if (key && key.length === 1 && /\S/.test(key)) {
+    e.preventDefault();
     shortcutInput.value = key.toUpperCase();
   }
 });
@@ -112,72 +139,10 @@ saveShortcut.addEventListener("click", () => {
 function showFeedback(msg, type) {
   feedback.textContent = msg;
   feedback.className = "feedback " + type;
-  setTimeout(() => {
-    feedback.textContent = "";
-    feedback.className = "feedback";
-  }, 3000);
+  setTimeout(() => { feedback.textContent = ""; feedback.className = "feedback"; }, 3000);
 }
 
-// ── Lista de palavras salvas ──
-function renderWordList(words) {
-  wordList.innerHTML = "";
-  wordCount.textContent = words.length;
-
-  if (words.length === 0) {
-    emptyState.style.display = "block";
-    clearAllBtn.style.display = "none";
-    return;
-  }
-
-  emptyState.style.display = "none";
-  clearAllBtn.style.display = "inline-flex";
-
-  // Ordena alfabeticamente
-  const sorted = [...words].sort((a, b) => a.word.localeCompare(b.word));
-
-  for (const entry of sorted) {
-    const item = document.createElement("div");
-    item.className = "word-item";
-
-    const textWrap = document.createElement("div");
-    textWrap.className = "word-item-text";
-
-    const enEl = document.createElement("div");
-    enEl.className = "word-en";
-    enEl.textContent = entry.word;
-
-    const ptEl = document.createElement("div");
-    ptEl.className = "word-pt";
-    ptEl.textContent = entry.translation;
-
-    textWrap.appendChild(enEl);
-    textWrap.appendChild(ptEl);
-
-    const delBtn = document.createElement("button");
-    delBtn.className = "word-delete";
-    delBtn.title = "Remover";
-    delBtn.textContent = "×";
-    delBtn.addEventListener("click", () => deleteWord(entry.word));
-
-    item.appendChild(textWrap);
-    item.appendChild(delBtn);
-    wordList.appendChild(item);
-  }
-}
-
-function deleteWord(word) {
-  chrome.storage.local.get(["savedWords"], (result) => {
-    const list = (result.savedWords || []).filter(
-      (w) => w.word.toLowerCase() !== word.toLowerCase()
-    );
-    chrome.storage.local.set({ savedWords: list }, () => {
-      renderWordList(list);
-    });
-  });
-}
-
-clearAllBtn.addEventListener("click", () => {
-  chrome.storage.local.set({ savedWords: [] }, () => {
-    renderWordList([]);
-  });
+// ── Abre página de vocabulário ──
+openVocabBtn.addEventListener("click", () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL("vocabulary.html") });
 });

@@ -3,10 +3,11 @@
   "name": "TradupPop",
   "version": "1.0.0",
   "description": "Selecione qualquer palavra na página e receba a tradução instantaneamente — com áudio, dicionário e exemplos de uso.",
-  "permissions": ["activeTab", "storage"],
+  "permissions": ["activeTab", "storage", "tabs", "contextMenus"],
   "host_permissions": [
     "https://translate.googleapis.com/*",
-    "https://api.mymemory.translated.net/*"
+    "https://api.mymemory.translated.net/*",
+    "https://api.dictionaryapi.dev/*"
   ],
   "icons": {
     "16": "icons/icon16.png",
@@ -30,7 +31,8 @@
       "matches": ["<all_urls>", "file:///*"],
       "js": ["ui-strings.js", "content.js"],
       "css": ["styles.css"],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "all_frames": true
     }
   ]
 }

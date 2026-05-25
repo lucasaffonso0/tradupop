@@ -103,18 +103,22 @@
       <div id="shortcutFeedback" class="feedback"></div>
     </div>
 
-    <!-- Palavras salvas -->
+    <!-- Vocabulário -->
     <div class="panel-section">
-      <div class="section-header">
-        <div class="section-title">
+      <button id="openVocabBtn" class="btn-vocab-open">
+        <div class="btn-vocab-left">
           <svg class="row-icon star-icon" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
           <span id="lbl-savedWordsTitle">Palavras salvas</span>
           <span id="wordCount" class="badge">0</span>
         </div>
-        <button id="clearAllBtn" class="btn-danger" style="display:none" data-i18n="clearAll">Limpar tudo</button>
+        <div class="btn-vocab-right">
+          <span id="lbl-openVocab">Abrir</span>
+          <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        </div>
+      </button>
+      <div id="duePill" class="due-pill" style="display:none">
+        <span id="dueCount">0</span> <span id="lbl-dueForReview">para revisar</span>
       </div>
-      <div id="wordList" class="word-list"></div>
-      <div id="emptyState" class="empty-state" data-i18n="noWords">Nenhuma palavra salva ainda.</div>
     </div>
 
   </div>
