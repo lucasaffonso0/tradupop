@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="popup.css">
+  <title>TradupPop</title>
+</head>
+<body>
+  <div class="panel">
+
+    <div class="panel-header">
+      <img src="icons/icon48.png" class="panel-logo" alt="TradupPop">
+      <div class="panel-header-text">
+        <div class="panel-title">TradupPop</div>
+        <div class="panel-subtitle" id="lbl-panelSubtitle">Painel de controle</div>
+      </div>
+    </div>
+
+    <!-- Idioma da interface -->
+    <div class="panel-section">
+      <div class="section-row">
+        <div class="row-label">
+          <svg class="row-icon" viewBox="0 0 24 24"><path d="M5 8l6 6M4 14l6-6 2-3M2 5h12M7 2h1M22 22l-5-10-5 10M14 18h6"/></svg>
+          <span id="lbl-uiLang">Idioma da interface</span>
+        </div>
+        <select id="uiLangSelect" class="lang-select" style="width:auto;min-width:120px">
+          <option value="pt">🇧🇷 Português</option>
+          <option value="en">🇺🇸 English</option>
+          <option value="es">🇪🇸 Español</option>
+          <option value="fr">🇫🇷 Français</option>
+          <option value="de">🇩🇪 Deutsch</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Dark mode -->
+    <div class="panel-section">
+      <div class="section-row">
+        <div class="row-label">
+          <svg class="row-icon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <span id="lbl-darkMode">Modo escuro</span>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="darkModeToggle">
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Idiomas -->
+    <div class="panel-section">
+      <div class="section-title">
+        <svg class="row-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        <span id="lbl-langsTitle">Idiomas</span>
+      </div>
+      <div class="lang-row">
+        <div class="lang-group">
+          <label class="lang-label" id="lbl-langFrom">De</label>
+          <select id="sourceLang" class="lang-select">
+            <option value="en">🇺🇸 Inglês</option>
+            <option value="pt">🇧🇷 Português</option>
+            <option value="es">🇪🇸 Espanhol</option>
+            <option value="fr">🇫🇷 Francês</option>
+            <option value="de">🇩🇪 Alemão</option>
+            <option value="it">🇮🇹 Italiano</option>
+            <option value="ja">🇯🇵 Japonês</option>
+            <option value="zh">🇨🇳 Chinês</option>
+            <option value="ko">🇰🇷 Coreano</option>
+            <option value="ru">🇷🇺 Russo</option>
+          </select>
+        </div>
+        <button id="swapLangBtn" class="btn-swap" title="Trocar idiomas">⇄</button>
+        <div class="lang-group">
+          <label class="lang-label" id="lbl-langTo">Para</label>
+          <select id="targetLang" class="lang-select">
+            <option value="pt">🇧🇷 Português</option>
+            <option value="en">🇺🇸 Inglês</option>
+            <option value="es">🇪🇸 Espanhol</option>
+            <option value="fr">🇫🇷 Francês</option>
+            <option value="de">🇩🇪 Alemão</option>
+            <option value="it">🇮🇹 Italiano</option>
+            <option value="ja">🇯🇵 Japonês</option>
+            <option value="zh">🇨🇳 Chinês</option>
+            <option value="ko">🇰🇷 Coreano</option>
+            <option value="ru">🇷🇺 Russo</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Atalho -->
+    <div class="panel-section">
+      <div class="section-title">
+        <svg class="row-icon" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></svg>
+        <span id="lbl-shortcutTitle">Atalho para falar seleção</span>
+      </div>
+      <div class="shortcut-row">
+        <span class="shortcut-badge">Ctrl</span>
+        <span class="shortcut-plus">+</span>
+        <input type="text" id="shortcutInput" class="shortcut-input" maxlength="1" placeholder="Q">
+        <button id="saveShortcutBtn" class="btn-primary" data-i18n="save">Salvar</button>
+      </div>
+      <div id="shortcutFeedback" class="feedback"></div>
+    </div>
+
+    <!-- Palavras salvas -->
+    <div class="panel-section">
+      <div class="section-header">
+        <div class="section-title">
+          <svg class="row-icon star-icon" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          <span id="lbl-savedWordsTitle">Palavras salvas</span>
+          <span id="wordCount" class="badge">0</span>
+        </div>
+        <button id="clearAllBtn" class="btn-danger" style="display:none" data-i18n="clearAll">Limpar tudo</button>
+      </div>
+      <div id="wordList" class="word-list"></div>
+      <div id="emptyState" class="empty-state" data-i18n="noWords">Nenhuma palavra salva ainda.</div>
+    </div>
+
+  </div>
+  <script src="ui-strings.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
