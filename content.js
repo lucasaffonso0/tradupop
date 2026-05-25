@@ -10,6 +10,8 @@ let darkModeEnabled = false;
 let sourceLang = "en";
 let targetLang = "pt";
 let uiLang = "pt";
+let pinnedPosition = null; // { top, left } quando fixado
+let isDragged = false;
 
 function t(key) {
   return (UI_STRINGS[uiLang] || UI_STRINGS["pt"])[key] || key;
@@ -127,7 +129,8 @@ function handleSelection(event) {
       text,
       response.alternatives || [],
       response.dictionary || [],
-      response.examples || []
+      response.examples || [],
+      response.phonetic || ""
     );
   });
 }
@@ -141,14 +144,14 @@ function retranslate(word) {
       autoHide();
       return;
     }
-    showPopup(response.translated, currentRect, word, response.alternatives || [], response.dictionary || [], response.examples || []);
+    showPopup(response.translated, currentRect, word, response.alternatives || [], response.dictionary || [], response.examples || [], response.phonetic || "");
   });
 }
 
 function goBack() {
   const prev = historyStack.pop();
   if (prev) {
-    showPopup(prev.translatedText, currentRect, prev.sourceText, prev.alternatives, prev.dictionary, prev.examples);
+    showPopup(prev.translatedText, currentRect, prev.sourceText, prev.alternatives, prev.dictionary, prev.examples, prev.phonetic || "");
   }
 }
 
@@ -158,13 +161,14 @@ function showPopup(
   sourceText = "",
   alternatives = [],
   dictionary = [],
-  examples = []
+  examples = [],
+  phonetic = ""
 ) {
   if (rect) currentRect = rect;
 
   // Salva estado atual para o histórico (só quando é uma tradução completa)
   if (translatedText !== LOADING_SENTINEL && sourceText) {
-    currentState = { translatedText, sourceText, alternatives, dictionary, examples };
+    currentState = { translatedText, sourceText, alternatives, dictionary, examples, phonetic };
   }
 
   if (!popupEl) {
@@ -182,10 +186,10 @@ function showPopup(
   }
 
   // ── Header: botão voltar (se houver histórico) + palavra em inglês + áudio EN ──
-  if (sourceText) {
-    const headerEl = document.createElement("div");
-    headerEl.className = "translate-header";
+  const headerEl = document.createElement("div");
+  headerEl.className = "translate-header";
 
+  if (sourceText) {
     const titleWrap = document.createElement("div");
     titleWrap.className = "translate-title-wrap";
 
@@ -215,10 +219,20 @@ function showPopup(
 
     titleWrap.appendChild(langTag);
     titleWrap.appendChild(sourceEl);
+    if (phonetic) {
+      const phoneticEl = document.createElement("div");
+      phoneticEl.className = "translate-source-phonetic";
+      phoneticEl.textContent = `/${phonetic.replace(/^[/\[]+|[/\]]+$/g, "").trim()}/`;
+      titleWrap.appendChild(phoneticEl);
+    }
 
-    const actionsEl = document.createElement("div");
-    actionsEl.className = "translate-actions";
+    headerEl.appendChild(titleWrap);
+  }
 
+  const actionsEl = document.createElement("div");
+  actionsEl.className = "translate-actions";
+
+  if (sourceText) {
     const speakEnBtn = makeButton("translate-speak-btn", `${t("listenIn")} ${LANG_NAMES[sourceLang] || sourceLang}`, speakerSvg());
     speakEnBtn.addEventListener("mousedown", stopPopupEvent);
     speakEnBtn.addEventListener("mouseup", stopPopupEvent);
@@ -226,11 +240,40 @@ function showPopup(
       stopPopupEvent(event);
       speakText(sourceText, LANG_TTS[sourceLang] || "en-US");
     });
-
     actionsEl.appendChild(speakEnBtn);
-    headerEl.appendChild(titleWrap);
-    headerEl.appendChild(actionsEl);
-    popupEl.appendChild(headerEl);
+  }
+
+  const pinBtn = makeButton("translate-pin-btn", "Pin", pinSvg());
+  pinBtn.classList.toggle("is-pinned", !!pinnedPosition);
+  pinBtn.addEventListener("mousedown", stopPopupEvent);
+  pinBtn.addEventListener("click", (e) => {
+    stopPopupEvent(e);
+    if (pinnedPosition) {
+      pinnedPosition = null;
+      isDragged = false;
+      pinBtn.classList.remove("is-pinned");
+    } else {
+      pinnedPosition = { top: popupEl.style.top, left: popupEl.style.left };
+      pinBtn.classList.add("is-pinned");
+    }
+  });
+
+  const closeBtn = makeButton("translate-close-btn", "Close", closeSvg());
+  closeBtn.addEventListener("mousedown", stopPopupEvent);
+  closeBtn.addEventListener("click", (e) => {
+    stopPopupEvent(e);
+    pinnedPosition = null;
+    isDragged = false;
+    hidePopup();
+  });
+
+  actionsEl.appendChild(pinBtn);
+  actionsEl.appendChild(closeBtn);
+  headerEl.appendChild(actionsEl);
+  popupEl.appendChild(headerEl);
+
+  if (sourceText) {
+    makeDraggable(popupEl, headerEl);
   }
 
   // ── Card: tradução em português + salvar ──
@@ -303,7 +346,7 @@ function showPopup(
   popupEl.appendChild(footerEl);
 
   // Inicializa estado do botão salvar após carregar storage
-  if (sourceText && translatedText !== "Traduzindo...") {
+  if (sourceText && translatedText !== LOADING_SENTINEL) {
     loadSavedWords(() => {
       const key = sourceText.toLowerCase();
       if (savedWords.has(key)) {
@@ -343,7 +386,7 @@ function showPopup(
       p.className = "translate-example-sentence";
       p.innerHTML = sentence;
 
-      const speakExBtn = makeButton("translate-row-speak-btn", "Ouvir frase", speakerSvgSmall());
+      const speakExBtn = makeButton("translate-row-speak-btn", t("listenPhrase"), speakerSvgSmall());
       speakExBtn.addEventListener("mousedown", stopPopupEvent);
       speakExBtn.addEventListener("mouseup", stopPopupEvent);
       speakExBtn.addEventListener("click", (event) => {
@@ -417,9 +460,14 @@ function showPopup(
   const minLeft = window.scrollX + viewportPadding;
   const left = Math.min(Math.max(window.scrollX + rect.left, minLeft), maxLeft);
 
-  popupEl.style.top = `${top}px`;
-  popupEl.style.left = `${left}px`;
-  popupEl.dataset.placement = placeAbove ? "top" : "bottom";
+  if (pinnedPosition) {
+    popupEl.style.top  = pinnedPosition.top;
+    popupEl.style.left = pinnedPosition.left;
+  } else if (!isDragged) {
+    popupEl.style.top = `${top}px`;
+    popupEl.style.left = `${left}px`;
+    popupEl.dataset.placement = placeAbove ? "top" : "bottom";
+  }
 
   clearTimeout(hideTimer);
 
@@ -498,6 +546,7 @@ function hidePopup() {
     popupEl.classList.remove("is-visible");
     popupEl.style.display = "none";
   }
+  isDragged = false;
   clearTimeout(hideTimer);
 }
 
@@ -624,4 +673,46 @@ function checkSvg() {
 
 function backArrowSvg() {
   return '<svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>';
+}
+
+function pinSvg() {
+  return '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5M9 10.5V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v5.5l2 2v1H7v-1l2-2z"/></svg>';
+}
+
+function closeSvg() {
+  return '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+}
+
+function makeDraggable(el, handleEl) {
+  let startX, startY, origLeft, origTop;
+
+  handleEl.style.cursor = "grab";
+
+  handleEl.addEventListener("mousedown", (e) => {
+    if (e.target.closest("button")) return;
+    startX = e.clientX;
+    startY = e.clientY;
+    origLeft = parseInt(el.style.left) || el.getBoundingClientRect().left + window.scrollX;
+    origTop  = parseInt(el.style.top)  || el.getBoundingClientRect().top  + window.scrollY;
+    handleEl.style.cursor = "grabbing";
+
+    const onMove = (e) => {
+      isDragged = true;
+      const newLeft = (origLeft + e.clientX - startX) + "px";
+      const newTop  = (origTop  + e.clientY - startY) + "px";
+      el.style.left = newLeft;
+      el.style.top  = newTop;
+      if (pinnedPosition) {
+        pinnedPosition = { top: newTop, left: newLeft };
+      }
+    };
+    const onUp = () => {
+      handleEl.style.cursor = "grab";
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    e.preventDefault();
+  });
 }

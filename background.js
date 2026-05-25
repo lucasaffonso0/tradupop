@@ -78,8 +78,9 @@ async function translateWithGoogle(text, sl = "en", tl = "pt") {
     ? extractDictionaryEntries(data, text)
     : [];
   const examples = extractExamples(data);
+  const phonetic = extractPhonetic(data);
 
-  return { translated, alternatives, dictionary, examples };
+  return { translated, alternatives, dictionary, examples, phonetic };
 }
 
 async function translateWithMyMemory(text, sl = "en", tl = "pt") {
@@ -116,8 +117,52 @@ async function translateWithMyMemory(text, sl = "en", tl = "pt") {
     translated,
     alternatives: isSingleEnglishWord(text) ? dedupe(alternatives) : [],
     dictionary: [],
-    examples: []
+    examples: [],
+    phonetic: ""
   };
+}
+
+function extractPhonetic(data) {
+  const segments = Array.isArray(data?.[0]) ? data[0] : [];
+  const fromSegments = segments
+    .map((segment) => (typeof segment?.[3] === "string" ? segment[3].trim() : ""))
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+  if (fromSegments) {
+    return fromSegments;
+  }
+
+  const flat = [];
+  collectStrings(data, flat);
+  for (const value of flat) {
+    const text = value.trim();
+    if (!text || text.length > 60) {
+      continue;
+    }
+    if (/^[/\[].+[/\]]$/.test(text)) {
+      return text;
+    }
+    if (/[ˈˌɑ-ɒəɚɛɜɪɔʊʃʒθðŋæ]/.test(text)) {
+      return text;
+    }
+  }
+
+  return "";
+}
+
+function collectStrings(value, target) {
+  if (typeof value === "string") {
+    target.push(value);
+    return;
+  }
+  if (!Array.isArray(value)) {
+    return;
+  }
+  for (const item of value) {
+    collectStrings(item, target);
+  }
 }
 
 function isSingleEnglishWord(text) {

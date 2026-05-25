@@ -111,8 +111,12 @@
           <span id="lbl-savedWordsTitle">Palavras salvas</span>
           <span id="wordCount" class="badge">0</span>
         </div>
-        <button id="clearAllBtn" class="btn-danger" style="display:none" data-i18n="clearAll">Limpar tudo</button>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button id="exportBtn" class="btn-secondary" style="display:none" data-i18n="export">Exportar</button>
+          <button id="clearAllBtn" class="btn-danger" style="display:none" data-i18n="clearAll">Limpar tudo</button>
+        </div>
       </div>
+      <input type="text" id="wordSearch" class="word-search" style="display:none" placeholder="Buscar palavra...">
       <div id="wordList" class="word-list"></div>
       <div id="emptyState" class="empty-state" data-i18n="noWords">Nenhuma palavra salva ainda.</div>
     </div>

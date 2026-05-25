@@ -3,23 +3,27 @@ const uiLangSelect  = document.getElementById("uiLangSelect");
 function applyUiStrings(lang) {
   const s = UI_STRINGS[lang] || UI_STRINGS["pt"];
   const map = {
-    "lbl-panelSubtitle": s.panelSubtitle,
-    "lbl-darkMode":      s.darkMode,
-    "lbl-shortcutTitle": s.shortcutTitle,
-    "lbl-langsTitle":    s.langsTitle,
-    "lbl-langFrom":      s.langFrom,
-    "lbl-langTo":        s.langTo,
+    "lbl-panelSubtitle":   s.panelSubtitle,
+    "lbl-darkMode":        s.darkMode,
+    "lbl-shortcutTitle":   s.shortcutTitle,
+    "lbl-langsTitle":      s.langsTitle,
+    "lbl-langFrom":        s.langFrom,
+    "lbl-langTo":          s.langTo,
     "lbl-savedWordsTitle": s.savedWordsTitle,
-    "lbl-uiLang":        s.uiLangTitle,
+    "lbl-uiLang":          s.uiLangTitle,
   };
   for (const [id, text] of Object.entries(map)) {
     const el = document.getElementById(id);
     if (el) el.textContent = text;
   }
-  // data-i18n elements
   document.querySelectorAll("[data-i18n]").forEach((el) => {
     const key = el.dataset.i18n;
     if (s[key]) el.textContent = s[key];
+  });
+  const wordSearch = document.getElementById("wordSearch");
+  if (wordSearch) wordSearch.placeholder = s.searchPlaceholder || "";
+  document.querySelectorAll(".word-delete").forEach((btn) => {
+    btn.title = s.deleteWord || "Remove";
   });
 }
 
@@ -28,9 +32,11 @@ const shortcutInput = document.getElementById("shortcutInput");
 const saveShortcut  = document.getElementById("saveShortcutBtn");
 const feedback      = document.getElementById("shortcutFeedback");
 const wordList      = document.getElementById("wordList");
+const wordSearch    = document.getElementById("wordSearch");
 const emptyState    = document.getElementById("emptyState");
 const wordCount     = document.getElementById("wordCount");
 const clearAllBtn   = document.getElementById("clearAllBtn");
+const exportBtn     = document.getElementById("exportBtn");
 const sourceLangEl  = document.getElementById("sourceLang");
 const targetLangEl  = document.getElementById("targetLang");
 const swapLangBtn   = document.getElementById("swapLangBtn");
@@ -118,21 +124,37 @@ function showFeedback(msg, type) {
   }, 3000);
 }
 
+// ── Busca em tempo real ──
+wordSearch.addEventListener("input", () => {
+  const q = wordSearch.value.trim().toLowerCase();
+  document.querySelectorAll(".word-item").forEach((item) => {
+    const text = item.textContent.toLowerCase();
+    item.style.display = text.includes(q) ? "" : "none";
+  });
+});
+
 // ── Lista de palavras salvas ──
 function renderWordList(words) {
   wordList.innerHTML = "";
   wordCount.textContent = words.length;
+  wordSearch.value = "";
 
   if (words.length === 0) {
     emptyState.style.display = "block";
     clearAllBtn.style.display = "none";
+    exportBtn.style.display = "none";
+    wordSearch.style.display = "none";
     return;
   }
 
   emptyState.style.display = "none";
   clearAllBtn.style.display = "inline-flex";
+  exportBtn.style.display = "inline-flex";
+  wordSearch.style.display = "block";
 
-  // Ordena alfabeticamente
+  const lang = uiLangSelect.value;
+  const s = UI_STRINGS[lang] || UI_STRINGS["pt"];
+
   const sorted = [...words].sort((a, b) => a.word.localeCompare(b.word));
 
   for (const entry of sorted) {
@@ -155,7 +177,7 @@ function renderWordList(words) {
 
     const delBtn = document.createElement("button");
     delBtn.className = "word-delete";
-    delBtn.title = "Remover";
+    delBtn.title = s.deleteWord || "Remove";
     delBtn.textContent = "×";
     delBtn.addEventListener("click", () => deleteWord(entry.word));
 
@@ -177,7 +199,24 @@ function deleteWord(word) {
 }
 
 clearAllBtn.addEventListener("click", () => {
+  const lang = uiLangSelect.value;
+  const s = UI_STRINGS[lang] || UI_STRINGS["pt"];
+  if (!confirm(s.confirmClearAll)) return;
   chrome.storage.local.set({ savedWords: [] }, () => {
     renderWordList([]);
+  });
+});
+
+// ── Exportar palavras ──
+exportBtn.addEventListener("click", () => {
+  chrome.storage.local.get(["savedWords"], (result) => {
+    const data = JSON.stringify(result.savedWords || [], null, 2);
+    const blob = new Blob([data], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "tradupop-words.json";
+    a.click();
+    URL.revokeObjectURL(url);
   });
 });

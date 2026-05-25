@@ -432,6 +432,39 @@ body {
   background: var(--danger-soft);
 }
 
+/* ── Word search ── */
+.word-search {
+  width: 100%;
+  padding: 7px 10px;
+  margin-bottom: 8px;
+  background: var(--card);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-family: var(--font);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 120ms;
+}
+
+.word-search:focus { border-color: var(--accent); }
+
+/* ── Botão secundário (exportar) ── */
+.btn-secondary {
+  padding: 4px 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: border-color 120ms;
+}
+
+.btn-secondary:hover { border-color: var(--accent); }
+
 /* ── Empty state ── */
 .empty-state {
   font-size: 12px;

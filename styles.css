@@ -62,6 +62,45 @@
   transform: translateY(0) scale(1);
 }
 
+/* ── Botão fechar / fixar ── */
+.translate-close-btn,
+.translate-pin-btn {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--tp-text-muted);
+  transition: background 120ms, color 120ms;
+}
+
+.translate-close-btn svg,
+.translate-pin-btn svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.translate-close-btn:hover,
+.translate-pin-btn:hover {
+  background: var(--tp-border);
+  color: var(--tp-text-primary);
+}
+
+.translate-pin-btn.is-pinned {
+  color: var(--tp-accent);
+  background: var(--tp-accent-soft);
+}
+
 /* ── Dark mode ── */
 .translate-selection-popup.dark-mode {
   --tp-bg:           #0F172A;
@@ -176,12 +215,23 @@
   word-break: break-word;
 }
 
+.translate-source-phonetic {
+  margin-top: 4px;
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1.3;
+  color: var(--tp-text-secondary);
+  font-family: "Times New Roman", Georgia, serif;
+  word-break: break-word;
+}
+
 .translate-actions {
   display: flex;
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
   padding-top: 2px;
+  margin-left: auto;
 }
 
 /* ── Botões de áudio ── */
