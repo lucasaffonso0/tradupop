@@ -1,3 +1,20 @@
+// Dispara a checagem de seleção pendente e a leitura do storage em paralelo,
+// antes de qualquer outra coisa
+const pendingPromise = new Promise((resolve) => {
+  try {
+    chrome.runtime.sendMessage({ type: "GET_PENDING_SELECTION" }, (resp) => {
+      if (chrome.runtime.lastError) return resolve(null);
+      resolve(resp?.pending?.text ? resp.pending : null);
+    });
+  } catch (_) { resolve(null); }
+});
+const settingsPromise = new Promise((resolve) => {
+  chrome.storage.local.get(
+    ["darkMode", "shortcutKey", "savedWordKeys", "sourceLang", "targetLang", "uiLang", "popupMode"],
+    (r) => resolve(r || {})
+  );
+});
+
 const uiLangSelect = document.getElementById("uiLangSelect");
 
 function applyUiStrings(lang) {
@@ -78,15 +95,32 @@ const tvSpeakSlowBtn   = document.getElementById("tvSpeakSlowBtn");
 const tvSaveBtn        = document.getElementById("tvSaveBtn");
 const tvSettingsBtn    = document.getElementById("tvSettingsBtn");
 
+function applyTheme(dark) {
+  document.body.classList.toggle("dark", dark);
+  // .light anula o padrão do prefers-color-scheme (ver popup.css)
+  document.body.classList.toggle("light", !dark);
+}
+
+// Mostra o painel; transições só depois do primeiro paint com o tema certo
+let revealed = false;
+function revealPanel() {
+  if (revealed) return;
+  revealed = true;
+  document.body.classList.remove("booting");
+  requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.add("ready")));
+}
+// Segurança: nunca deixa o painel invisível
+setTimeout(revealPanel, 600);
+
 // ── Carrega configurações ──
-chrome.storage.local.get(["darkMode", "shortcutKey", "savedWords", "sourceLang", "targetLang", "uiLang", "popupMode"], (result) => {
+settingsPromise.then((result) => {
   const lang = result.uiLang || "pt";
   uiLangSelect.value = lang;
   applyUiStrings(lang);
 
   const dark = resolveDarkMode(result.darkMode);
   darkToggle.checked = dark;
-  document.body.classList.toggle("dark", dark);
+  applyTheme(dark);
 
   shortcutInput.value = (result.shortcutKey || "q").toUpperCase();
   if (result.sourceLang) sourceLangEl.value = result.sourceLang;
@@ -94,29 +128,76 @@ chrome.storage.local.get(["darkMode", "shortcutKey", "savedWords", "sourceLang",
 
   setPopupModeUI(result.popupMode || "page");
 
-  updateWordCount(Array.isArray(result.savedWords) ? result.savedWords : []);
+  if (Array.isArray(result.savedWordKeys)) setWordCount(result.savedWordKeys.length);
 
-  checkPendingSelection();
+  // Espera a seleção pendente por no máximo ~150ms para não mostrar
+  // as configurações e depois pular para a tradução
+  let settled = false;
+  const fallback = setTimeout(() => {
+    if (settled) return;
+    settled = true;
+    revealPanel();
+    scheduleDueCount();
+  }, 150);
+  pendingPromise.then((pending) => {
+    if (pending) {
+      clearTimeout(fallback);
+      settled = true;
+      showTranslationView(pending);
+      revealPanel();
+      return;
+    }
+    if (settled) return;
+    settled = true;
+    clearTimeout(fallback);
+    revealPanel();
+    scheduleDueCount();
+  });
 });
 
 // Atualiza contador quando palavras mudam
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
-  if (changes.savedWords) {
-    updateWordCount(Array.isArray(changes.savedWords.newValue) ? changes.savedWords.newValue : []);
+  if (changes.savedWordKeys) {
+    const keys = changes.savedWordKeys.newValue;
+    setWordCount(Array.isArray(keys) ? keys.length : 0);
+    if (tvCurrent) refreshTvSaveState(keys);
+  }
+  // Já veio no evento; não custa leitura extra
+  if (changes.savedWords && Array.isArray(changes.savedWords.newValue)) {
+    updateDueCount(changes.savedWords.newValue);
   }
 });
 
-function updateWordCount(words) {
-  wordCount.textContent = words.length;
+function setWordCount(n) {
+  wordCount.textContent = n;
+}
+
+function updateDueCount(words) {
   const now = Date.now();
-  const due = words.filter(w => !w.nextReview || w.nextReview <= now).length;
+  let due = 0;
+  for (const w of words) if (!w.nextReview || w.nextReview <= now) due++;
   if (due > 0) {
     dueCount.textContent = due;
     duePill.style.display = "inline-flex";
   } else {
     duePill.style.display = "none";
   }
+}
+
+// Contagem de revisões precisa de savedWords completo: lê só depois do primeiro
+// paint e só quando as configurações estão visíveis
+let dueScheduled = false;
+function scheduleDueCount() {
+  if (dueScheduled || document.body.classList.contains("translation-only")) return;
+  dueScheduled = true;
+  const run = () => chrome.storage.local.get(["savedWords"], (r) => {
+    const words = Array.isArray(r.savedWords) ? r.savedWords : [];
+    setWordCount(words.length);
+    updateDueCount(words);
+  });
+  if ("requestIdleCallback" in window) requestIdleCallback(run, { timeout: 500 });
+  else setTimeout(run, 50);
 }
 
 uiLangSelect.addEventListener("change", () => {
@@ -144,7 +225,7 @@ swapLangBtn.addEventListener("click", () => {
 // ── Dark mode ──
 darkToggle.addEventListener("change", () => {
   const enabled = darkToggle.checked;
-  document.body.classList.toggle("dark", enabled);
+  applyTheme(enabled);
   chrome.storage.local.set({ darkMode: enabled });
 });
 
@@ -214,16 +295,10 @@ openShortcutsBtn.addEventListener("click", () => {
 
 let tvCurrent = null;          // { text, context, sourceLang, targetLang, phonetic, examples }
 let tvActiveTranslation = "";
+let tvSeq = 0;
 
 function tvStrings() {
   return UI_STRINGS[uiLangSelect.value] || UI_STRINGS.pt;
-}
-
-function checkPendingSelection() {
-  chrome.runtime.sendMessage({ type: "GET_PENDING_SELECTION" }, (resp) => {
-    if (chrome.runtime.lastError || !resp?.pending?.text) return;
-    showTranslationView(resp.pending);
-  });
 }
 
 function showTranslationView(pending) {
@@ -232,6 +307,7 @@ function showTranslationView(pending) {
   const tl = targetLangEl.value || "pt";
   tvCurrent = { text: pending.text, context: pending.context || "", sourceLang: sl, targetLang: tl, phonetic: "", examples: [] };
   tvActiveTranslation = "";
+  const seq = ++tvSeq;
 
   // Aberto por seleção: mostra só a tradução; configurações ficam atrás do ⚙
   document.body.classList.add("translation-only");
@@ -257,8 +333,11 @@ function showTranslationView(pending) {
   tvSaveBtn.title = s.saveWord;
   tvSaveBtn.setAttribute("aria-label", s.saveWord);
   tvSaveBtn.classList.remove("is-saved");
+  refreshTvSaveState();
 
-  chrome.runtime.sendMessage({ type: "TRANSLATE_TEXT", text: pending.text }, (response) => {
+  chrome.runtime.sendMessage({ type: "TRANSLATE_TEXT", text: pending.text, sl, tl, slot: "popup" }, (response) => {
+    if (seq !== tvSeq) return;
+    if (!chrome.runtime.lastError && response?.cancelled) return;
     tvTargetEl.classList.remove("is-loading");
     if (chrome.runtime.lastError || !response?.ok) {
       tvTargetEl.textContent = s.errTranslation;
@@ -271,8 +350,14 @@ function showTranslationView(pending) {
     tvTargetEl.textContent = response.translated;
 
     if (response.phonetic) {
-      tvPhoneticEl.textContent = "/" + String(response.phonetic).replace(/^[/\[]+|[/\]]+$/g, "").trim() + "/";
-      tvPhoneticEl.style.display = "";
+      setTvPhonetic(response.phonetic);
+    } else if (response.phoneticPending) {
+      // Fonética chega depois: preenche no lugar, sem re-render
+      chrome.runtime.sendMessage({ type: "GET_PHONETIC", text: pending.text, sl }, (r) => {
+        if (chrome.runtime.lastError || seq !== tvSeq || !tvCurrent || !r?.phonetic) return;
+        tvCurrent.phonetic = r.phonetic;
+        setTvPhonetic(r.phonetic);
+      });
     }
 
     const alts = Array.isArray(response.alternatives) ? response.alternatives : [];
@@ -315,19 +400,24 @@ function showTranslationView(pending) {
       }
       tvDefsEl.style.display = "";
     }
-
-    refreshTvSaveState();
   });
 }
 
-function refreshTvSaveState() {
-  chrome.storage.local.get(["savedWords"], (r) => {
+function setTvPhonetic(phonetic) {
+  tvPhoneticEl.textContent = "/" + String(phonetic).replace(/^[/\[]+|[/\]]+$/g, "").trim() + "/";
+  tvPhoneticEl.style.display = "";
+}
+
+// Estado da estrela via savedWordKeys (não lê savedWords inteiro)
+function refreshTvSaveState(keys) {
+  const apply = (list) => {
     if (!tvCurrent) return;
-    const list = Array.isArray(r.savedWords) ? r.savedWords : [];
-    const saved = list.some((w) => w.word.toLowerCase() === tvCurrent.text.toLowerCase());
+    const saved = Array.isArray(list) && list.includes(tvCurrent.text.toLowerCase());
     tvSaveBtn.classList.toggle("is-saved", saved);
     tvSaveBtn.title = saved ? tvStrings().wordSaved : tvStrings().saveWord;
-  });
+  };
+  if (keys !== undefined) return apply(keys);
+  chrome.storage.local.get(["savedWordKeys"], (r) => apply(r.savedWordKeys));
 }
 
 tvSaveBtn.addEventListener("click", () => {
@@ -410,6 +500,7 @@ document.addEventListener("keydown", (e) => {
 tvSettingsBtn.addEventListener("click", () => {
   document.body.classList.remove("translation-only");
   tvSettingsBtn.style.display = "none";
+  scheduleDueCount();
 });
 
 // ─────────────────────────────────────────────

@@ -29,6 +29,34 @@ body.dark {
   --danger-soft:  #450A0A;
 }
 
+/* Até a preferência salva ser aplicada, segue o tema do sistema (.light anula) */
+@media (prefers-color-scheme: dark) {
+  body:not(.light) {
+    --bg:           #0F172A;
+    --card:         #1E293B;
+    --border:       #334155;
+    --text-primary: #F1F5F9;
+    --text-mid:     #CBD5E1;
+    --text-muted:   #94A3B8;
+    --accent-soft:  #1E3A5F;
+    --success-soft: #14532D;
+    --danger-soft:  #450A0A;
+  }
+}
+
+/* Sem transições até o primeiro paint com o tema certo (evita flash) */
+body:not(.ready),
+body:not(.ready) *,
+body:not(.ready) *::before,
+body:not(.ready) *::after {
+  transition: none !important;
+}
+
+/* Enquanto decide entre tradução e configurações, não mostra o painel */
+body.booting .panel {
+  visibility: hidden;
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {

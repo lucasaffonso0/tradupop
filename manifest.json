@@ -42,9 +42,14 @@
     {
       "matches": ["<all_urls>", "file:///*"],
       "js": ["ui-strings.js", "content.js"],
-      "css": ["styles.css"],
       "run_at": "document_idle",
       "all_frames": true
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["styles.css"],
+      "matches": ["<all_urls>"]
     }
   ]
 }

@@ -119,38 +119,50 @@ chrome.storage.local.get(["savedWords", "darkMode", "uiLang", "sourceLang", "tar
   const dark = resolveDarkMode(result.darkMode);
   darkModeExplicit = result.darkMode !== undefined;
   darkToggle.checked = dark;
-  document.body.classList.toggle("dark", dark);
+  applyTheme(dark);
+  // Transições só depois do primeiro paint com o tema certo
+  requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.add("ready")));
 
   allWords = Array.isArray(result.savedWords) ? result.savedWords : [];
   renderList();
   updateStats();
 });
 
+function applyTheme(dark) {
+  document.body.classList.toggle("dark", dark);
+  // .light anula o padrão do prefers-color-scheme (ver vocabulary.css)
+  document.body.classList.toggle("light", !dark);
+}
+
 // Segue o tema do sistema enquanto o usuário não escolher manualmente
 if (window.matchMedia) {
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (event) => {
     if (darkModeExplicit) return;
     darkToggle.checked = event.matches;
-    document.body.classList.toggle("dark", event.matches);
+    applyTheme(event.matches);
   });
 }
 
-// Sincroniza mudanças feitas em outra aba/popup
+// Sincroniza mudanças feitas em outra aba/popup (re-render com debounce)
+let syncDebounce = null;
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
   if (changes.savedWords) {
     // Ignora echo de escritas locais para não destruir estado de undo em progresso
     if (!localWrite) {
       allWords = Array.isArray(changes.savedWords.newValue) ? changes.savedWords.newValue : [];
-      renderList(wordSearch.value.trim().toLowerCase() || undefined);
-      updateStats();
+      clearTimeout(syncDebounce);
+      syncDebounce = setTimeout(() => {
+        renderList(currentFilter());
+        updateStats();
+      }, 100);
     }
   }
   if (changes.darkMode) {
     darkModeExplicit = changes.darkMode.newValue !== undefined;
     const dark = resolveDarkMode(changes.darkMode.newValue);
     darkToggle.checked = dark;
-    document.body.classList.toggle("dark", dark);
+    applyTheme(dark);
   }
   if (changes.uiLang) {
     uiLang = changes.uiLang.newValue || "pt";
@@ -165,7 +177,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (changes.vocabSort && changes.vocabSort.newValue !== sortMode) {
     sortMode = changes.vocabSort.newValue || "alpha";
     sortSelect.value = sortMode;
-    renderList(wordSearch.value.trim().toLowerCase() || undefined);
+    renderList(currentFilter());
   }
   if (changes.practiceDirection) {
     practiceDirection = changes.practiceDirection.newValue || "forward";
@@ -269,7 +281,7 @@ if (donationConfigured) {
 // ── Dark mode ──
 darkToggle.addEventListener("change", () => {
   const enabled = darkToggle.checked;
-  document.body.classList.toggle("dark", enabled);
+  applyTheme(enabled);
   chrome.storage.local.set({ darkMode: enabled });
 });
 
@@ -298,6 +310,23 @@ function updateStats() {
 }
 
 // ── Lista ──
+const collator = new Intl.Collator();
+
+// Chaves de busca em minúsculas, calculadas uma vez por entrada
+const searchKeys = new WeakMap();
+function searchKey(entry) {
+  let k = searchKeys.get(entry);
+  if (!k) {
+    k = { w: String(entry.word).toLowerCase(), t: String(entry.translation || "").toLowerCase() };
+    searchKeys.set(entry, k);
+  }
+  return k;
+}
+
+function currentFilter() {
+  return wordSearch.value.trim().toLowerCase() || undefined;
+}
+
 function sortWords(words) {
   const list = [...words];
   switch (sortMode) {
@@ -305,128 +334,149 @@ function sortWords(words) {
       return list.sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
     case "level":
       return list.sort((a, b) =>
-        (a.reviewLevel || 0) - (b.reviewLevel || 0) || a.word.localeCompare(b.word));
+        (a.reviewLevel || 0) - (b.reviewLevel || 0) || collator.compare(a.word, b.word));
     case "due":
       // Sem nextReview = nunca revisada = primeiro
       return list.sort((a, b) => (a.nextReview || 0) - (b.nextReview || 0));
     default:
-      return list.sort((a, b) => a.word.localeCompare(b.word));
+      return list.sort((a, b) => collator.compare(a.word, b.word));
   }
 }
 
+// Ícones criados uma vez e clonados por item
+function svgTemplate(markup) {
+  const tpl = document.createElement("template");
+  tpl.innerHTML = markup;
+  return tpl.content.firstElementChild;
+}
+const ICON_SPEAK      = svgTemplate(`<svg viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`);
+const ICON_SPEAK_SLOW = svgTemplate(`<svg viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`);
+const ICON_DELETE     = svgTemplate(`<svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`);
+
+function actionBtn(className, action, title, icon) {
+  const btn = document.createElement("button");
+  btn.className = className;
+  btn.dataset.action = action;
+  btn.title = title;
+  btn.appendChild(icon.cloneNode(true));
+  return btn;
+}
+
+function buildWordItem(entry) {
+  const level = entry.reviewLevel || 0;
+  const item = document.createElement("div");
+  item.className = "word-item";
+  item.dataset.level = level;
+  item.dataset.key = searchKey(entry).w;
+
+  // Dots (5 dots indicating review level)
+  const dots = document.createElement("div");
+  dots.className = "level-dots";
+  for (let i = 0; i < 5; i++) {
+    const dot = document.createElement("div");
+    dot.className = "level-dot" + (i < level ? " filled" : "");
+    dots.appendChild(dot);
+  }
+
+  // Body
+  const body = document.createElement("div");
+  body.className = "word-body";
+
+  const row = document.createElement("div");
+  row.className = "word-row";
+
+  const orig = document.createElement("span");
+  orig.className = "word-original";
+  orig.textContent = entry.word;
+
+  const sep = document.createElement("span");
+  sep.className = "word-sep";
+  sep.textContent = "→";
+
+  const transl = document.createElement("span");
+  transl.className = "word-translation";
+  transl.textContent = entry.translation;
+
+  row.appendChild(orig);
+  if (entry.phonetic) {
+    const phon = document.createElement("span");
+    phon.className = "word-phonetic";
+    phon.textContent = formatPhonetic(entry.phonetic);
+    row.appendChild(phon);
+  }
+  row.appendChild(sep);
+  row.appendChild(transl);
+  body.appendChild(row);
+
+  if (entry.context) {
+    const ctx = document.createElement("div");
+    ctx.className = "word-context";
+    ctx.textContent = entry.context;
+    body.appendChild(ctx);
+  }
+
+  // Actions — usa o idioma salvo com a palavra quando existir
+  const entryLang = entry.sourceLang || sourceLang;
+  const actions = document.createElement("div");
+  actions.className = "word-actions";
+  actions.appendChild(actionBtn("word-action-btn", "speak",
+    s("listenIn") + " " + (LANG_NAMES[entryLang] || entryLang), ICON_SPEAK));
+  actions.appendChild(actionBtn("word-action-btn slow", "speak-slow",
+    s("listenSlow") || "Ouvir devagar", ICON_SPEAK_SLOW));
+  actions.appendChild(actionBtn("word-action-btn delete", "delete",
+    s("deleteWord") || "Remover", ICON_DELETE));
+
+  item.appendChild(dots);
+  item.appendChild(body);
+  item.appendChild(actions);
+  return item;
+}
+
 function renderList(filter) {
-  wordList.innerHTML = "";
   const words = filter
-    ? allWords.filter(w =>
-        w.word.toLowerCase().includes(filter) ||
-        w.translation.toLowerCase().includes(filter))
+    ? allWords.filter(w => {
+        const k = searchKey(w);
+        return k.w.includes(filter) || k.t.includes(filter);
+      })
     : allWords;
 
   const sorted = sortWords(words);
 
   if (sorted.length === 0) {
+    wordList.textContent = "";
     emptyState.style.display = "";
     return;
   }
   emptyState.style.display = "none";
 
-  for (const entry of sorted) {
-    const level = entry.reviewLevel || 0;
-    const item = document.createElement("div");
-    item.className = "word-item";
-    item.dataset.level = level;
-
-    // Dots (5 dots indicating review level)
-    const dots = document.createElement("div");
-    dots.className = "level-dots";
-    for (let i = 0; i < 5; i++) {
-      const dot = document.createElement("div");
-      dot.className = "level-dot" + (i < level ? " filled" : "");
-      dots.appendChild(dot);
-    }
-
-    // Body
-    const body = document.createElement("div");
-    body.className = "word-body";
-
-    const row = document.createElement("div");
-    row.className = "word-row";
-
-    const orig = document.createElement("span");
-    orig.className = "word-original";
-    orig.textContent = entry.word;
-
-    const sep = document.createElement("span");
-    sep.className = "word-sep";
-    sep.textContent = "→";
-
-    const transl = document.createElement("span");
-    transl.className = "word-translation";
-    transl.textContent = entry.translation;
-
-    row.appendChild(orig);
-    if (entry.phonetic) {
-      const phon = document.createElement("span");
-      phon.className = "word-phonetic";
-      phon.textContent = formatPhonetic(entry.phonetic);
-      row.appendChild(phon);
-    }
-    row.appendChild(sep);
-    row.appendChild(transl);
-    body.appendChild(row);
-
-    if (entry.context) {
-      const ctx = document.createElement("div");
-      ctx.className = "word-context";
-      ctx.textContent = entry.context;
-      body.appendChild(ctx);
-    }
-
-    // Actions
-    const actions = document.createElement("div");
-    actions.className = "word-actions";
-
-    // Speak btn (normal) — usa o idioma salvo com a palavra quando existir
-    const entryLang = entry.sourceLang || sourceLang;
-    const speakBtn = document.createElement("button");
-    speakBtn.className = "word-action-btn";
-    speakBtn.title = s("listenIn") + " " + (LANG_NAMES[entryLang] || entryLang);
-    speakBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`;
-    speakBtn.addEventListener("click", (e) => { e.stopPropagation(); speakWord(entry.word, false, entryLang); });
-
-    // Speak btn (slow)
-    const speakSlowBtn = document.createElement("button");
-    speakSlowBtn.className = "word-action-btn slow";
-    speakSlowBtn.title = s("listenSlow") || "Ouvir devagar";
-    speakSlowBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`;
-    speakSlowBtn.addEventListener("click", (e) => { e.stopPropagation(); speakWord(entry.word, true, entryLang); });
-
-    // Delete btn
-    const delBtn = document.createElement("button");
-    delBtn.className = "word-action-btn delete";
-    delBtn.title = s("deleteWord") || "Remover";
-    delBtn.innerHTML = `<svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
-    delBtn.addEventListener("click", (e) => { e.stopPropagation(); deleteWord(entry.word); });
-
-    actions.appendChild(speakBtn);
-    actions.appendChild(speakSlowBtn);
-    actions.appendChild(delBtn);
-
-    item.appendChild(dots);
-    item.appendChild(body);
-    item.appendChild(actions);
-    wordList.appendChild(item);
-  }
-
-  updateStats();
+  const frag = document.createDocumentFragment();
+  for (const entry of sorted) frag.appendChild(buildWordItem(entry));
+  wordList.replaceChildren(frag);
 }
+
+// Um único listener delegado para os botões de todos os itens
+wordList.addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-action]");
+  if (!btn || !wordList.contains(btn)) return;
+  e.stopPropagation();
+  const key = btn.closest(".word-item")?.dataset.key;
+  if (key === undefined) return;
+  const entry = allWords.find(w => searchKey(w).w === key);
+  if (!entry) return;
+  const entryLang = entry.sourceLang || sourceLang;
+  switch (btn.dataset.action) {
+    case "speak":      speakWord(entry.word, false, entryLang); break;
+    case "speak-slow": speakWord(entry.word, true, entryLang); break;
+    case "delete":     deleteWord(entry.word); break;
+  }
+});
 
 // ── Busca (debounced) ──
 let searchDebounce = null;
 wordSearch.addEventListener("input", () => {
   clearTimeout(searchDebounce);
   searchDebounce = setTimeout(() => {
-    renderList(wordSearch.value.trim().toLowerCase() || undefined);
+    renderList(currentFilter());
   }, 150);
 });
 
@@ -434,7 +484,7 @@ wordSearch.addEventListener("input", () => {
 sortSelect.addEventListener("change", () => {
   sortMode = sortSelect.value;
   chrome.storage.local.set({ vocabSort: sortMode });
-  renderList(wordSearch.value.trim().toLowerCase() || undefined);
+  renderList(currentFilter());
 });
 
 // ── Delete com Undo ──
@@ -442,7 +492,6 @@ sortSelect.addEventListener("change", () => {
 // gravações de outras abas ressuscitavam a palavra ou eram engolidas pelo timer.
 // O Undo reinsere apenas a palavra apagada sobre o estado atual (não um snapshot).
 function deleteWord(word) {
-  const q = wordSearch.value.trim().toLowerCase() || undefined;
   clearTimeout(toastHideTimer);
 
   const key = word.toLowerCase();
@@ -452,7 +501,11 @@ function deleteWord(word) {
   allWords = allWords.filter(w => w.word.toLowerCase() !== key);
   localWrite = true;
   chrome.storage.local.set({ savedWords: allWords }, () => { localWrite = false; });
-  renderList(q);
+  // Remove só o item do DOM em vez de re-renderizar a lista inteira
+  for (const item of wordList.querySelectorAll(".word-item")) {
+    if (item.dataset.key === key) { item.remove(); break; }
+  }
+  if (!wordList.firstElementChild) emptyState.style.display = "";
   updateStats();
 
   undoMsg.textContent = `"${word}" ${s("wordRemoved") || "removida."}`;
@@ -467,7 +520,7 @@ function deleteWord(word) {
       localWrite = true;
       chrome.storage.local.set({ savedWords: allWords }, () => { localWrite = false; });
     }
-    renderList(wordSearch.value.trim().toLowerCase() || undefined);
+    renderList(currentFilter());
     updateStats();
   };
 
@@ -518,7 +571,7 @@ importFile.addEventListener("change", () => {
       allWords = [...allWords, ...newWords];
       localWrite = true;
       chrome.storage.local.set({ savedWords: allWords }, () => { localWrite = false; });
-      renderList(wordSearch.value.trim().toLowerCase() || undefined);
+      renderList(currentFilter());
       updateStats();
       if (newWords.length === 0) {
         showImportFeedback(s("importNone"), "ok");

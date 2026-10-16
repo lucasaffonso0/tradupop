@@ -1,6 +1,11 @@
 /* ============================================================
    Translate Selection Extension — Design System
+   Carregado dentro do shadow DOM (closed) do content script.
    ============================================================ */
+
+:host {
+  all: initial;
+}
 
 .translate-selection-popup {
   /* Reset contra estilos da página host */
@@ -60,6 +65,25 @@
 .translate-selection-popup.is-visible {
   opacity: 1;
   transform: translateY(0) scale(1);
+}
+
+/* Invisível (entrando/saindo) não intercepta cliques */
+.translate-selection-popup:not(.is-visible) {
+  pointer-events: none;
+}
+
+/* Acima da seleção: ancorado pela base, conteúdo cresce para cima */
+.translate-selection-popup.tp-above {
+  translate: 0 -100%;
+}
+
+.translate-selection-popup [hidden] {
+  display: none !important;
+}
+
+/* Botões do UA não herdam a fonte (especificidade zero: não sobrepõe regras abaixo) */
+:where(.translate-selection-popup) button {
+  font-family: inherit;
 }
 
 /* ── Botão fechar / fixar ── */
@@ -170,6 +194,11 @@
   gap: 10px;
   padding: 14px 16px 10px;
   background: var(--tp-bg);
+  cursor: grab;
+}
+
+.translate-selection-popup.is-dragging .translate-header {
+  cursor: grabbing;
 }
 
 .translate-title-wrap {
@@ -238,6 +267,7 @@
 }
 
 .translate-actions {
+  cursor: default;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -434,31 +464,38 @@
 }
 
 /* ── Footer / Toast "Salvo!" ── */
+/* Footer sem altura: o toast flutua sobre a borda do card (sem mexer no layout) */
 .translate-footer {
-  padding: 0 16px;
+  position: relative;
+  height: 0;
+  z-index: 3;
 }
 
 .translate-saved-toast {
+  position: absolute;
+  top: -15px;
+  left: 50%;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 10px;
+  padding: 4px 10px;
   background: var(--tp-success-soft);
   border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.12);
   font-size: 12px;
   font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
   color: var(--tp-success);
-  max-height: 0;
-  overflow: hidden;
   opacity: 0;
-  transition: max-height 200ms ease-out, opacity 180ms ease-out, padding 200ms ease-out;
+  transform: translate(-50%, 4px);
+  transition: opacity 180ms ease-out, transform 180ms ease-out;
   pointer-events: none;
 }
 
 .translate-saved-toast.is-visible {
-  max-height: 40px;
-  padding: 6px 10px;
   opacity: 1;
+  transform: translate(-50%, 0);
 }
 
 .translate-saved-toast svg {
@@ -871,4 +908,61 @@
 @keyframes tp-pulse {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.45; }
+}
+
+/* ── Retradução (sinônimo clicado): conteúdo atual esmaecido ── */
+.translate-title-wrap,
+.translate-alt-inline,
+.translate-card-actions,
+.translate-extras {
+  transition: opacity 150ms ease-out;
+}
+
+.translate-selection-popup.is-refreshing .translate-title-wrap,
+.translate-selection-popup.is-refreshing .translate-alt-inline,
+.translate-selection-popup.is-refreshing .translate-card-actions,
+.translate-selection-popup.is-refreshing .translate-extras {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* ── Texto longo (frase/parágrafo): botões em linha própria, fonte menor ── */
+.translate-selection-popup.is-long .translate-header {
+  flex-direction: column-reverse;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.translate-selection-popup.is-long .translate-actions {
+  align-self: flex-end;
+  padding-top: 0;
+}
+
+.translate-selection-popup.is-long .translate-source {
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.45;
+  letter-spacing: 0;
+  max-height: calc(1.45em * 6);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--tp-border) transparent;
+  cursor: auto;
+}
+
+.translate-selection-popup.is-long .translate-target {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.translate-selection-popup.is-paragraph .translate-source {
+  font-size: 14px;
+}
+
+.translate-selection-popup.is-paragraph .translate-target {
+  font-size: 14px;
+  font-weight: 500;
+  padding: 1px 3px;
 }
